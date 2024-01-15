@@ -72,7 +72,7 @@ class Individuum:
         self, node_genes: list[NodeGene], connect_genes: list[ConnectGene]
     ) -> None:
         self.node_genes: list[NodeGene] = node_genes
-        self.connect_genes: list[NodeGene] = connect_genes
+        self.connect_genes: list[NodeGene] = sorted(connect_genes, key=lambda x: x.marking)
         self.fitness = 0
         self.input_nodes = sorted(
             [node for node in self.node_genes if node.type == NodeTypes.Input],
@@ -159,6 +159,39 @@ class Individuum:
                 )
             )
             self.connect_genes.sort(key=lambda connect: connect.marking)
+
+    def distance(self, other: "Individuum", c1, c2, c3) -> float:
+        # Distance between two Individuums
+        unique_markings = list(
+            set(
+                [gene.marking for gene in self.connect_genes]
+                + [gene.marking for gene in other.connect_genes]
+            )
+        )
+        disjoint = 0
+        weight_diff = []
+        i,j=0,0
+
+        for marking in sorted(unique_markings):
+            if marking == self.connect_genes[i].marking and marking == other.connect_genes[j].marking:
+                weight_diff.append(abs(
+                    self.connect_genes[i].weight - other.connect_genes[j].weight
+                ))
+                i += 1
+                j += 1
+            elif marking == self.connect_genes[i].marking:
+                disjoint += 1
+                i += 1
+            else:
+                disjoint += 1
+                j += 1
+            
+            if i >= len(self.connect_genes) or j >= len(other.connect_genes):
+                break
+
+            excess = i - (len(self.connect_genes)-1) + j - (len(other.connect_genes)-1)
+
+        return (c1 * excess) / len(unique_markings) + (c2 * disjoint) / len(unique_markings) + c3 * sum(weight_diff)/len(weight_diff)
 
     def crossover(self, other: "Individuum") -> "Individuum":
         # Crossover Connection Genes
