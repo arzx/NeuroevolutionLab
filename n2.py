@@ -1,4 +1,5 @@
 from enum import Enum
+import time
 import numpy as np
 import networkx as nx
 import random
@@ -85,6 +86,10 @@ class Individuum:
             node for node in self.node_genes if node.type == NodeTypes.Bias
         ]
 
+    @staticmethod
+    def copy(self):
+        return deepcopy(self)
+
     def mutate(self, mutation: dict):
         # Mutate Weights
         if random.random() < mutation["weight"]["rate"]:
@@ -95,7 +100,8 @@ class Individuum:
                     connection.weight += np.random.normal(0, 0.1)
         # Mutate Connections
         if random.random() < mutation["connection"]:
-            while True:
+            start_time = time.perf_counter()
+            while time.perf_counter() - start_time < 1:
                 in_node_marking = random.choice(
                     [
                         node.marking
@@ -154,7 +160,7 @@ class Individuum:
             )
             self.connect_genes.sort(key=lambda connect: connect.marking)
 
-    def crossover(self, other: "Individuum", keep_disabled_prob: float) -> "Individuum":
+    def crossover(self, other: "Individuum") -> "Individuum":
         # Crossover Connection Genes
         unique_markings = list(
             set(
@@ -167,27 +173,27 @@ class Individuum:
         while True:
             if self.connect_genes[i].marking == other.connect_genes[j].marking:
                 if random.random() < 0.5:
-                    child_connect_genes.append(self.connect_genes[i].copy())
+                    child_connect_genes.append(ConnectGene.copy(self.connect_genes[i]))
                 else:
-                    child_connect_genes.append(other.connect_genes[j].copy())
+                    child_connect_genes.append(ConnectGene.copy(other.connect_genes[j]))
                 i += 1
                 j += 1
             elif self.connect_genes[i].marking < other.connect_genes[j].marking:
                 if self.fitness > other.fitness:
-                    child_connect_genes.append(self.connect_genes[i].copy())
+                    child_connect_genes.append(ConnectGene.copy(self.connect_genes[i]))
                 i += 1
             else:
                 if other.fitness > self.fitness:
-                    child_connect_genes.append(other.connect_genes[j].copy())
+                    child_connect_genes.append(ConnectGene.copy(other.connect_genes[j]))
                 j += 1
             if i >= len(self.connect_genes):
                 if other.fitness > self.fitness:
                     child_connect_genes += [
-                        gene.copy() for gene in other.connect_genes[j:]
+                        ConnectGene.copy(gene) for gene in other.connect_genes[j:]
                     ]
                 elif self.fitness == other.fitness:
                     child_connect_genes += [
-                        gene.copy()
+                        ConnectGene.copy(gene)
                         for gene in other.connect_genes[j:]
                         if random.random() < 0.5
                     ]
@@ -195,15 +201,22 @@ class Individuum:
             if j >= len(other.connect_genes):
                 if self.fitness > other.fitness:
                     child_connect_genes += [
-                        gene.copy() for gene in self.connect_genes[i:]
+                        ConnectGene.copy(gene) for gene in self.connect_genes[i:]
                     ]
                 elif self.fitness == other.fitness:
                     child_connect_genes += [
-                        gene.copy()
+                        ConnectGene.copy(gene)
                         for gene in self.connect_genes[i:]
                         if random.random() < 0.5
                     ]
                 break
+        child_nodes = [NodeGene.copy(node) for node in self.node_genes]
+        child_nodes += [
+            NodeGene.copy(node)
+            for node in other.node_genes
+            if node.marking not in [node.marking for node in child_nodes]
+        ]
+        return Individuum(child_nodes, child_connect_genes)
 
     def forward(self, inputs):
         next_layer = []
@@ -213,11 +226,13 @@ class Individuum:
                 for connect in self.connect_genes
                 if connect.in_node_marking == node.marking and not connect.disabled
             ]:
-                out_node = [node for node in self.node_genes if node.marking == connection.out_node_marking][0]
+                out_node = [
+                    node
+                    for node in self.node_genes
+                    if node.marking == connection.out_node_marking
+                ][0]
                 out_node.sum += connection.weight * inp
-                next_layer.append(
-                    out_node
-                ) if out_node not in next_layer else None
+                next_layer.append(out_node) if out_node not in next_layer else None
                 out_node.acts += 1
         while next_layer:
             current_layer = next_layer
@@ -227,7 +242,8 @@ class Individuum:
                         [
                             connect
                             for connect in self.connect_genes
-                            if connect.out_node_marking == node.marking and not connect.disabled
+                            if connect.out_node_marking == node.marking
+                            and not connect.disabled
                         ]
                     )
                     == node.acts
@@ -236,13 +252,18 @@ class Individuum:
             next_layer = []
             for node in current_layer:
                 for connection in [
-                    connect for connect in self.connect_genes if connect.in_node_marking == node.marking and not connect.disabled
+                    connect
+                    for connect in self.connect_genes
+                    if connect.in_node_marking == node.marking and not connect.disabled
                 ]:
-                    connection.out_node.sum += connection.weight * node.sum
-                    connection.out_node.acts += 1
-                    next_layer.append(
-                        connection.out_node
-                    ) if connection.out_node not in next_layer else None
+                    out_node = [
+                        node
+                        for node in self.node_genes
+                        if node.marking == connection.out_node_marking
+                    ][0]
+                    out_node.sum += connection.weight * node.sum
+                    out_node.acts += 1
+                    next_layer.append(out_node) if out_node not in next_layer else None
         ret = np.array([node.sum for node in self.output_nodes])
         for node in self.node_genes:
             node.reset()
