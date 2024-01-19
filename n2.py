@@ -189,7 +189,7 @@ class Individuum:
             if i >= len(self.connect_genes) or j >= len(other.connect_genes):
                 break
 
-            excess = i - (len(self.connect_genes)-1) + j - (len(other.connect_genes)-1)
+        excess = len(self.connect_genes)-i + len(other.connect_genes)-j
 
         return (c1 * excess) / len(unique_markings) + (c2 * disjoint) / len(unique_markings) + c3 * sum(weight_diff)/len(weight_diff)
 
